@@ -1,8 +1,5 @@
 #!/usr/bin/with-contenv bash
 
-rm -rf /etc/wireguard
-mkdir -p /etc/wireguard
-
 if [[ -z ${PUBLIC_KEY} || -z ${END_POINT} ]]; then
   echo "Finding the best server..."
   recommendations=$(curl -s "https://api.nordvpn.com/v1/servers/recommendations?&filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
@@ -14,11 +11,7 @@ if [[ -z ${PUBLIC_KEY} || -z ${END_POINT} ]]; then
   fi
 fi
 
-if [[ -n ${RECONNECT} ]]; then
-  RECONNECT="s6-sleep ${RECONNECT} s6-svc -r /run/s6/services/wireguard &"
-fi
-
-cat >/etc/wireguard/wg0.conf <<EOL
+cat >/etc/wireguard/wg0.conf <<EOF
 [Interface]
 PrivateKey = ${PRIVATE_KEY}
 ListenPort = ${LISTEN_PORT:-51820}
@@ -29,14 +22,13 @@ PreUp = ${PRE_UP}
 PostUp = ${POST_UP}
 PreDown = ${PRE_DOWN}
 PostDown = ${POST_DOWN}
-PostUp = ${RECONNECT}
 
 [Peer]
 PublicKey = ${PUBLIC_KEY}
 AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
 Endpoint = ${END_POINT}
 PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}
-EOL
+EOF
 
 chmod 600 /etc/wireguard/wg0.conf
 
@@ -44,6 +36,4 @@ echo "Connecting..."
 wg-quick up wg0 
 wg show wg0
 
-sleep infinity & PID=$!
-trap "kill $PID; exit" INT TERM
-wait
+sleep "${RECONNECT_TIME:-infinity}"
