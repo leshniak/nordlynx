@@ -32,8 +32,9 @@ EOF
 
 chmod 600 /etc/wireguard/wg0.conf
 
-echo "Connecting..."
-wg-quick up wg0 
+echo "Connecting to ${END_POINT}..."
+nslookup $(echo "${END_POINT}" | cut -d":" -f1) | grep "^Name:" -A1 || true
+wg-quick up wg0
 wg show wg0
 
 sleep "${RECONNECT_TIME:-infinity}"
