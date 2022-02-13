@@ -11,7 +11,7 @@ if [[ -z ${PUBLIC_KEY} || -z ${END_POINT} ]]; then
   fi
 fi
 
-cat >/etc/wireguard/wg0.conf <<EOF
+( umask 077 && { cat >/etc/wireguard/wg0.conf <<-EOF
 [Interface]
 PrivateKey = ${PRIVATE_KEY}
 ListenPort = ${LISTEN_PORT:-51820}
@@ -29,11 +29,9 @@ AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
 Endpoint = ${END_POINT}
 PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}
 EOF
-
-chmod 600 /etc/wireguard/wg0.conf
+} && sync )
 
 echo "Connecting to ${END_POINT}..."
-nslookup $(echo "${END_POINT}" | cut -d":" -f1) | grep "^Name:" -A1 || true
 wg-quick up wg0
 wg show wg0
 
