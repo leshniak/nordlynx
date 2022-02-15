@@ -1,4 +1,4 @@
-FROM s6on/alpine:3.15
+FROM ghcr.io/linuxserver/baseimage-alpine:3.15
 LABEL maintainer="Julio Gutierrez julio.guti+nordlynx@pm.me"
 
 COPY patch/ /tmp/patch
@@ -8,6 +8,3 @@ RUN apk add --no-cache -U wireguard-tools curl jq patch && \
     rm -rf /tmp/* && \
     mkdir -p /etc/wireguard
 COPY root/ /
-
-# don't need to build modules
-RUN rm /etc/cont-init.d/30-module

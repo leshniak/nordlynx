@@ -1,17 +1,24 @@
 #!/usr/bin/with-contenv bash
 
+readonly RECOMMENDATIONS_API_URL="https://api.nordvpn.com/v1/servers/recommendations"
+readonly CONFIG_FILE="/etc/wireguard/wg0.conf"
+
+recommendations=""
+
 if [[ -z ${PUBLIC_KEY} || -z ${END_POINT} ]]; then
   echo "Finding the best server..."
-  recommendations=$(curl --retry "${RETRY:-5}" -LsS "https://api.nordvpn.com/v1/servers/recommendations?&filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
-  if [[ -z ${PUBLIC_KEY} ]]; then
-    PUBLIC_KEY=$(jq -r '.[0].technologies[] | select( .identifier == "wireguard_udp" ) | .metadata[] | select( .name == "public_key" ) | .value' <<< "${recommendations}")
-  fi
-  if [[ -z ${END_POINT} ]]; then
-    END_POINT=$(jq -r '.[0].hostname' <<< "${recommendations}"):51820
-  fi
+  recommendations=$(curl --retry "${SERVER_LOOKUP_RETRIES:-5}" -LsS "${RECOMMENDATIONS_API_URL}?filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
 fi
 
-( umask 077; { cat >/etc/wireguard/wg0.conf <<-EOF
+if [[ -z ${PUBLIC_KEY} ]]; then
+  PUBLIC_KEY=$(jq -r '.[0].technologies[] | select( .identifier == "wireguard_udp" ) | .metadata[] | select( .name == "public_key" ) | .value' <<< "${recommendations}")
+fi
+
+if [[ -z ${END_POINT} ]]; then
+  END_POINT=$(jq -r '.[0].hostname' <<< "${recommendations}"):51820
+fi
+
+( umask 077; { cat >"${CONFIG_FILE}" <<-EOF
 [Interface]
 PrivateKey = ${PRIVATE_KEY}
 ListenPort = ${LISTEN_PORT:-51820}
@@ -29,7 +36,7 @@ AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
 Endpoint = ${END_POINT}
 PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}
 EOF
-} && sync -d /etc/wireguard/wg0.conf )
+} && sync -d "${CONFIG_FILE}" )
 
 echo "Connecting to ${END_POINT}..."
 wg-quick up wg0
