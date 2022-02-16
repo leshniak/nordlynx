@@ -1,7 +1,11 @@
 #!/bin/bash
 
+readonly CONFIG_FILE="/etc/wireguard/wg0.conf"
+
+[ ! -f "${CONFIG_FILE}" ] && exit 0
+
 echo "Connection summary:"
 wg show wg0
 
 wg-quick down wg0
-rm -f /etc/wireguard/wg0.conf
+rm -f "${CONFIG_FILE}"

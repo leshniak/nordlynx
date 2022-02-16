@@ -3,18 +3,28 @@
 readonly RECOMMENDATIONS_API_URL="https://api.nordvpn.com/v1/servers/recommendations"
 readonly CONFIG_FILE="/etc/wireguard/wg0.conf"
 
+idle() {
+  sleep "${RECONNECT_TIME:-infinity}"
+}
+
 recommendations=""
 
-if [[ -z ${PUBLIC_KEY} || -z ${END_POINT} ]]; then
+if [[ -z "${PUBLIC_KEY}" || -z "${END_POINT}" ]]; then
   echo "Finding the best server..."
-  recommendations=$(curl --retry "${SERVER_LOOKUP_RETRIES:-5}" -LsS "${RECOMMENDATIONS_API_URL}?filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
+  recommendations=$(curl --retry "${SERVER_LOOKUP_RETRIES:-3}" -fsSL "${RECOMMENDATIONS_API_URL}?filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
+
+  if [[ $? -ne 0 || -z "${recommendations}" ]]; then
+    echo "Unable to find a server." 1>&2
+    idle
+    exit 1
+  fi
 fi
 
-if [[ -z ${PUBLIC_KEY} ]]; then
+if [ -z "${PUBLIC_KEY}" ]; then
   PUBLIC_KEY=$(jq -r '.[0].technologies[] | select( .identifier == "wireguard_udp" ) | .metadata[] | select( .name == "public_key" ) | .value' <<< "${recommendations}")
 fi
 
-if [[ -z ${END_POINT} ]]; then
+if [ -z "${END_POINT}" ]; then
   END_POINT=$(jq -r '.[0].hostname' <<< "${recommendations}"):51820
 fi
 
@@ -23,7 +33,7 @@ fi
 PrivateKey = ${PRIVATE_KEY}
 ListenPort = ${LISTEN_PORT:-51820}
 Address = ${ADDRESS:-10.5.0.2/32}
-DNS = ${DNS:-103.86.96.100,103.86.99.100}
+DNS = ${DNS:-103.86.96.100, 103.86.99.100}
 Table = ${TABLE:-auto}
 PreUp = ${PRE_UP}
 PostUp = ${POST_UP}
@@ -42,4 +52,4 @@ echo "Connecting to ${END_POINT}..."
 wg-quick up wg0
 wg show wg0
 
-sleep "${RECONNECT_TIME:-infinity}"
+idle
