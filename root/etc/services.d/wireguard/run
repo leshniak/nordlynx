@@ -3,8 +3,17 @@
 readonly RECOMMENDATIONS_API_URL="https://api.nordvpn.com/v1/servers/recommendations"
 readonly CONFIG_FILE="/etc/wireguard/wg0.conf"
 
-idle() {
-  sleep "${RECONNECT_TIME:-infinity}"
+_term() {
+  trap - TERM INT
+  kill -TERM -$$
+  exit 0
+}
+
+trap _term TERM INT
+
+snooze() {
+  sleep "${RECONNECT_TIME:-infinity}" &
+  wait
 }
 
 recommendations=""
@@ -15,7 +24,7 @@ if [[ -z "${PUBLIC_KEY}" || -z "${END_POINT}" ]]; then
 
   if [[ $? -ne 0 || -z "${recommendations}" ]]; then
     echo "Unable to find a server." 1>&2
-    idle
+    snooze
     exit 1
   fi
 fi
@@ -52,4 +61,4 @@ echo "Connecting to ${END_POINT}..."
 wg-quick up wg0
 wg show wg0
 
-idle
+snooze
