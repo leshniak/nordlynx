@@ -1,59 +1,60 @@
 #!/usr/bin/with-contenv bash
 
+readonly AUTO_FIND=$([[ -z "${PUBLIC_KEY}" || -z "${END_POINT}" ]] && echo "true" || echo "false")
 readonly RECOMMENDATIONS_API_URL="https://api.nordvpn.com/v1/servers/recommendations"
-readonly INTERFACE_CONFIG="[Interface]
-PrivateKey = ${PRIVATE_KEY}
-ListenPort = ${LISTEN_PORT:-51820}"
-
-_term() {
-  trap - TERM INT
-  kill -TERM -$$
-  exit 0
-}
-
-trap _term TERM INT
 
 snooze() {
   sleep "${RECONNECT_TIME:-infinity}" &
-  wait
+  local pid=$!
+  wait $pid
+  local retval=$?
+  [ $retval -eq 0 ] || kill $pid && return $retval
 }
 
-recommendations=""
-
-if [[ -z "${PUBLIC_KEY}" || -z "${END_POINT}" ]]; then
+set_server() {
   echo "Finding the best server..."
-  recommendations=$(curl --retry "${SERVER_LOOKUP_RETRIES:-3}" -fsSL "${RECOMMENDATIONS_API_URL}?filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
+  local recommendations=$(curl --retry "${SERVER_LOOKUP_RETRIES:-3}" -fsSL "${RECOMMENDATIONS_API_URL}?filters\[servers_technologies\]\[identifier\]=wireguard_udp&limit=1&${QUERY}")
 
   if [[ $? -ne 0 || -z "${recommendations}" ]]; then
     echo "Unable to find a server." 1>&2
     snooze
     exit 1
   else
-    hostname=$(jq -r '.[0].hostname' <<< "${recommendations}")
-    echo "Found ${hostname}."
+    local hostname=$(jq -r '.[0].hostname' <<< "${recommendations}")
+    echo "Found ${hostname}"
   fi
-fi
 
-if [ -z "${PUBLIC_KEY}" ]; then
   PUBLIC_KEY=$(jq -r '.[0].technologies[] | select( .identifier == "wireguard_udp" ) | .metadata[] | select( .name == "public_key" ) | .value' <<< "${recommendations}")
-fi
-
-if [ -z "${END_POINT}" ]; then
   END_POINT=$(jq -r '.[0].station' <<< "${recommendations}"):51820
-fi
+}
 
-peer_config="[Peer]
-PublicKey = ${PUBLIC_KEY}
-AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
-Endpoint = ${END_POINT}
-PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}"
+reconnect() {
+  if [ "${HOT_RECONNECT}" != "true" ]; then
+    exit 0
+  fi
+
+  if [ "${AUTO_FIND}" = "true" ]; then
+    set_server
+  fi
+
+  echo "Setting endpoint ${END_POINT}..."
+  wg set wg0 peer "${PUBLIC_KEY}" endpoint "${END_POINT}" || exit 2
+
+  echo "Status:"
+  wg show wg0
+}
+
+if [ "${AUTO_FIND}" = "true" ]; then
+ set_server
+fi
 
 echo "Connecting to ${END_POINT}..."
-if [[ -z $(ip link show dev wg0 2>/dev/null) ]]; then
-  (
-    umask 077
-    cat >/etc/wireguard/wg0.conf <<EOF
-${INTERFACE_CONFIG}
+(
+  umask 077
+  cat >/etc/wireguard/wg0.conf <<EOF
+[Interface]
+PrivateKey = ${PRIVATE_KEY}
+ListenPort = ${LISTEN_PORT:-51820}
 Address = ${ADDRESS:-10.5.0.2/32}
 DNS = ${DNS:-103.86.96.100, 103.86.99.100}
 Table = ${TABLE:-auto}
@@ -62,19 +63,25 @@ PostUp = ${POST_UP}
 PreDown = ${PRE_DOWN}
 PostDown = ${POST_DOWN}
 
-${peer_config}
+[Peer]
+PublicKey = ${PUBLIC_KEY}
+AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
+Endpoint = ${END_POINT}
+PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}
 EOF
-  )
-  wg-quick up wg0
-else
-  fwmark=$(wg show wg0 fwmark)
-  wg syncconf wg0 <(echo "${INTERFACE_CONFIG}
-fwmark = ${fwmark}
-
-${peer_config}")
-fi
+)
+wg-quick up wg0
 
 echo "Status:"
 wg show wg0
 
-snooze
+trap : HUP TERM INT
+
+while true; do
+  snooze
+
+  case $? in
+    0|129) reconnect ;;
+    *) exit $? ;;
+  esac
+done
