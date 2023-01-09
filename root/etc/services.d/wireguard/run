@@ -1,6 +1,7 @@
 #!/usr/bin/with-contenv bash
 
 readonly AUTO_FIND=$([[ -z "${PUBLIC_KEY}" || -z "${END_POINT}" ]] && echo "true" || echo "false")
+readonly PRIVATE_KEY=$([[ -z "${PRIVATE_KEY}" && -f "${PRIVATE_KEY_FILE}" ]] && head -n 1 "${PRIVATE_KEY_FILE}" || echo "${PRIVATE_KEY}")
 readonly RECOMMENDATIONS_API_URL="https://api.nordvpn.com/v1/servers/recommendations"
 
 snooze() {
@@ -64,9 +65,9 @@ PreDown = ${PRE_DOWN}
 PostDown = ${POST_DOWN}
 
 [Peer]
+Endpoint = ${END_POINT}
 PublicKey = ${PUBLIC_KEY}
 AllowedIPs = ${ALLOWED_IPS:-0.0.0.0/0}
-Endpoint = ${END_POINT}
 PersistentKeepalive = ${PERSISTENT_KEEP_ALIVE:-25}
 EOF
 )
