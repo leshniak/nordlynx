@@ -1,4 +1,4 @@
-FROM ghcr.io/linuxserver/baseimage-alpine:3.15
+FROM ghcr.io/linuxserver/baseimage-alpine:3.17
 LABEL maintainer="Julio Gutierrez julio.guti+nordlynx@pm.me"
 
 COPY patch/ /tmp/patch
