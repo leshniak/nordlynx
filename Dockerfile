@@ -1,10 +1,11 @@
-FROM ghcr.io/linuxserver/baseimage-alpine:3.17
+FROM ghcr.io/linuxserver/baseimage-alpine:3.21
 LABEL maintainer="Julio Gutierrez julio.guti+nordlynx@pm.me"
 
 COPY patch/ /tmp/patch
-RUN apk add --no-cache -U wireguard-tools curl jq patch && \
+RUN apk add --no-cache -U wireguard-tools curl jq patch iptables && \
     patch --verbose -p0 < /tmp/patch/wg-quick.patch && \
     apk del --purge patch && \
     rm -rf /tmp/* && \
     mkdir -p /etc/wireguard
 COPY root/ /
+RUN chmod +x /etc/cont-init.d/* /etc/services.d/wireguard/*
